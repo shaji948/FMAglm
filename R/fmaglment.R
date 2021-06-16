@@ -1,6 +1,6 @@
 fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
-                         penalty.factor, force.nlambda,
-                         type.measure, rule, solnptol ){
+                         penalty.factor = NULL, force.nlambda,
+                         type.measure, rule, solnptol, qp.scale ){
 
     #### Note: Only jackknife is supported in this version.
     ####       x must not contain the intercept column.
@@ -8,6 +8,9 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
     n <- nrow(x) #### Sample size
     nbeta <- ncol(x) + 1 #### Number of coefficients, including intercept
     res <- list() # Initiate returned list
+    if(is.null(penalty.factor) == TRUE){
+        penalty.factor <- rep(1.0, ncol(x))
+    }
 
     ########## Functions needed for weight estimations ##########
     #### SJ: Only useful if focus = "beta"
@@ -119,7 +122,8 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
     #### Note: lambda sequence is decreasing.
     fit_alldata = glmnet(x, y, family = family, nfolds = nfolds,
                          grouped = grouped, nlambda = nlambda,
-                         type.measure = type.measure)
+                         type.measure = type.measure,
+                         penalty.factor = penalty.factor)
     lambda_raw <- fit_alldata$lambda
     nlambda_raw <- length(lambda_raw)
     if(force.nlambda == TRUE & nlambda_raw != nlambda){
@@ -127,7 +131,8 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
         fit_alldata = glmnet(x, y, family = family, nfolds = nfolds,
                              grouped = grouped,
                              lambda = exp(seq(max(log(lambda_raw)), min(log(lambda_raw)), length.out = nlambda)),
-                             type.measure = type.measure)
+                             type.measure = type.measure,
+                             penalty.factor = penalty.factor)
         lambda_raw <- fit_alldata$lambda
         nlambda_raw <- length(lambda_raw)
     }
@@ -172,6 +177,18 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
         lambda[["Simpson(3/8)"]] <- sort(lambda_temp, decreasing = TRUE) ####  glmnet() works with decreasing sequence.
 
     }
+
+    #### SJ: If Simpson is considered, its lambda sequence always nests "raw".
+    ####     So we only need to figure out what the "longest" lambda sequence is.
+    if("Simpson(3/8)" %in% rule){
+        lambda_long <- lambda[["Simpson(3/8)"]]
+    } else if("Simpson(1/3)" %in% rule){
+        lambda_long <- lambda[["Simpson(1/3)"]]
+    } else if("raw" %in% rule){
+        lambda_long <- lambda[["raw"]]
+    } else if("Riemann" %in% rule){
+        lambda_long <- lambda[["Riemann"]]
+    }
     #### ---------------------------------------------------- ####
 
 
@@ -180,17 +197,6 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
     if( focus == "beta" ) {
 
         # B: Array for beta
-        #### SJ: If Simpson is considered, its lambda sequence always nests "raw".
-        ####     So we only need to figure out what the "longest" lambda sequence is.
-        if("Simpson(3/8)" %in% rule){
-            lambda_long <- lambda[["Simpson(3/8)"]]
-        } else if("Simpson(1/3)" %in% rule){
-            lambda_long <- lambda[["Simpson(1/3)"]]
-        } else if("raw" %in% rule){
-            lambda_long <- lambda[["raw"]]
-        } else if("Riemann" %in% rule){
-            lambda_long <- lambda[["Riemann"]]
-        }
         B <- array(0, dim = c(ncol(x) + 1, length(lambda_long) + 1, nfolds))
         B_raw <- array(0, dim = c(ncol(x) + 1, length(lambda_raw) + 1, nfolds))
 
@@ -224,7 +230,8 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
             y_i <- y[-i]
 
             ####  glmnet()
-            cvfit_long <- glmnet(x = x_i, y = y_i, family = family, lambda = lambda_long)
+            cvfit_long <- glmnet(x = x_i, y = y_i, family = family, lambda = lambda_long,
+                                 penalty.factor = penalty.factor)
             #fit <-  glmnet(x = x_i, y = y_i, family = family, lambda = lambda)
             #fit_raw <- glmnet(x = x_i, y = y_i, family = family, lambda = lambda_raw)
             ####  full model and others.
@@ -297,7 +304,8 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
 
         #### SJ: In order to estimate the weights, we add 0 to the lambda sequence here.
         ####     Need to make sure that lambda remains a decreasing sequence!
-        fit_long <- glmnet(x = x, y = y, family = family, lambda = lambda_long)
+        fit_long <- glmnet(x = x, y = y, family = family, lambda = lambda_long,
+                           penalty.factor = penalty.factor)
         if("raw" %in% rule){
 
             coef_raw <- cbind(as.matrix(coef(fit_long, s = lambda[["raw"]])),
@@ -317,6 +325,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                 res[["raw"]]$convergence <- nlopt_raw$convergence #### 0 = converged
                 res[["raw"]]$avecoef <- coef_raw %*% matrix(nlopt_raw$pars, ncol = 1)
                 res[["raw"]]$elapsed <- nlopt_raw$elapsed
+                res[["raw"]]$lambda <- lambda[["raw"]]
 
             } else {
                 res[["raw"]] <- nlopt_raw
@@ -342,7 +351,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
             if( inherits(nlopt_simp, "try-error") == FALSE ){
 
                 res[["Simpson(1/3)"]] <- list()
-                res[["Simpson(1/3)"]]$w <- nlopt_simp$pars
+                res[["Simpson(1/3)"]]$v <- nlopt_simp$pars
                 res[["Simpson(1/3)"]]$convergence <- nlopt_simp$convergence #### 0 = converged
                 res[["Simpson(1/3)"]]$avecoef <- coef_simp %*% matrix(nlopt_simp$pars, ncol = 1)
                 res[["Simpson(1/3)"]]$elapsed <- nlopt_simp$elapsed
@@ -354,8 +363,8 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                                (lambda_raw_zero[i] - lambda_raw_zero[i + 2]) / 6 )
                 }
                 scale[length(scale)] <- (lambda_raw_zero[i] - lambda_raw_zero[i + 1]) / 6
-                res[["Simpson(1/3)"]]$wfunc <- rbind( lambda[["Simpson(1/3)"]],
-                                                      nlopt_simp$pars / scale )
+                res[["Simpson(1/3)"]]$w <- nlopt_simp$pars / scale
+                res[["Simpson(1/3)"]]$lambda <- lambda[["Simpson(1/3)"]]
 
             } else {
                 res[["Simpson(1/3)"]] <- nlopt_simp
@@ -434,19 +443,26 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
 
         # Fitting the LASSO model
         cvglm = try(cv.glmnet(x, y, family = family, nfolds = nfolds,
-                              grouped = grouped, keep = TRUE, lambda = lambda,
-                              type.measure = type.measure ), TRUE)
+                              grouped = grouped, keep = TRUE, lambda = lambda_long,
+                              type.measure = type.measure,
+                              penalty.factor = penalty.factor), TRUE)
 
         #### VZ: Finding unique model forms
         betas_lasso = as.matrix(coef(cvglm, s = lambda_raw))  # Coefficients for hybrid lambda
         u = betas_lasso != 0                    # Logical, TRUE if coefficient is not 0
         hybrid_comb = unique(u, MARGIN = 2)     # Filtering unique model forms
-        # hybrid_comb = cbind(hybrid_comb, 1)   # Adding full model
-
-        # if(all(hybrid_comb[, ncol(hybrid_comb)] == 1) &
-        #   all(hybrid_comb[, ncol(hybrid_comb) - 1] == 1)){
-        #  hybrid_comb <- hybrid_comb[, - length(hybrid_comb)]
-        # }
+        #### SJ: Check the full model. If it is already added, we do nothing.
+        ####     If not added, we add the full model.
+        if(all(colSums(hybrid_comb) != nbeta)){
+            #### SJ: Full model is absent, we add the full model
+            hybrid_comb <- cbind(hybrid_comb, 1)
+        } else {
+            #### SJ: If the full model is present, we make sure it is not added more than once
+            full.index <- which(colSums(hybrid_comb) == nbeta)
+            if(length(full.index) >= 2){
+                hybrid_comb <- hybrid_comb[, -full.index[-1]]
+            }
+        }
 
         ####  SJ: fit full model (returning eta)
         ####  VZ: Fit hybrid and Singletons
@@ -512,56 +528,100 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
 
         }
 
+        #### SJ: need to make sure fit.preval is the linear predictor scale
+        ####     which is true in version 4.0-2
+        if("raw" %in% rule){
 
-        #### VZ: Adding non-augmented lambda weights
-        lambda_index <- match(lambda_raw, lambda)
-        cv_eta_raw <- cbind(cvglm$fit.preval[, lambda_index], fulmod_eta)
-        lambda_raw_0 <- c(lambda_raw, 0.0)
-        nlambda_raw_0 <- length(lambda_raw_0)
-        if( family == "binomial" ){
-            mu_cv_raw = plogis( cv_eta_raw )
-        } else if( family == "poisson" ){
-            mu_cv_raw = exp( cv_eta_raw )
+            lambda_index <- match(lambda[["raw"]], lambda_long)
+            lambda[["raw"]] <- c(lambda[["raw"]], 0)
+            nlambda_raw_0 <- length(lambda[["raw"]])
+            cv_eta_raw <- cbind(cvglm$fit.preval[, lambda_index],
+                                fulmod_eta)
+            if( family == "binomial" ){
+                mu_cv_raw = plogis( cv_eta_raw )
+            } else if( family == "poisson" ){
+                mu_cv_raw = exp( cv_eta_raw )
+            }
+
+            #### The symmetric matrix in the quadratic programming
+            qmat_raw <- crossprod( matrix(y, nrow = n, ncol = nlambda_raw_0) - mu_cv_raw )
+            if(qp.scale == "max"){
+                qmat_raw <- qmat_raw / max(qmat_raw)
+            } else if(qp.scale == "1/n"){
+                qmat_raw <- qmat_raw / n
+            }
+
+            ####  Quadratic programming
+            qrsolve_raw <- try( kernlab::ipop( c = rep(0.0, nlambda_raw_0),
+                                               H = qmat_raw,
+                                               A = matrix(1.0, nrow = 1, ncol = nlambda_raw_0),
+                                               b = 1.0,
+                                               l = rep(0.0, nlambda_raw_0),
+                                               u = rep(1.0, nlambda_raw_0),
+                                               r = 0.0),
+                                TRUE)
+
+            if(inherits(qrsolve_raw, "try-error") == FALSE){
+                res[["raw"]] <- list()
+                res[["raw"]]$w <- qrsolve_raw@primal
+                res[["raw"]]$convergence <- qrsolve_raw@how
+                res[["raw"]]$pos_def <- all(eigen(qmat_raw)$values > 0)
+            }
+
         }
+        if("Riemann" %in% rule){
 
-        #### The symmetric matrix in the quadratic programming
-        qmat_raw <- (1/n) * crossprod( matrix(y, nrow = n, ncol = nlambda_raw_0) - mu_cv_raw )
-
-        ####  Quadratic programming
-        qrsolve_raw <- try( kernlab::ipop( c = rep(0.0, nlambda_raw_0),
-                                           H = 2.0 * qmat_raw,
-                                           A = matrix(1.0, nrow = 1, ncol = nlambda_raw_0),
-                                           b = 1.0,
-                                           l = rep(0.0, nlambda_raw_0),
-                                           u = rep(1.0, nlambda_raw_0),
-                                           r = 0.0),
-                            TRUE)
-
-        ####  In version 4.0-2, it is the linear predictor scale
-        ####  We also add the full model.
-        cv_eta <- cbind(cvglm$fit.preval, fulmod_eta)
-        lambda <- c(lambda, 0.0)
-        nlambda <- length(lambda)
-        if( family == "binomial" ){
-            mu_cv = plogis( cv_eta )
-        } else if( family == "poisson" ){
-            mu_cv = exp( cv_eta )
         }
+        if("Simpson(1/3)" %in% rule){
 
-        #### The symmetric matrix in the quadratic programming
-        qmat <- (1/n)*crossprod( matrix(y, nrow = n, ncol = nlambda) - mu_cv )
+            lambda_index <- match(lambda[["Simpson(1/3)"]], lambda_long)
+            lambda[["Simpson(1/3)"]] <- c(lambda[["Simpson(1/3)"]], 0)
+            nlambda_simp_0 <- length(lambda[["Simpson(1/3)"]])
+            cv_eta_simp <- cbind(cvglm$fit.preval[, lambda_index],
+                                fulmod_eta)
+            if( family == "binomial" ){
+                mu_cv_simp = plogis( cv_eta_simp )
+            } else if( family == "poisson" ){
+                mu_cv_simp = exp( cv_eta_simp )
+            }
 
-        ####  Quadratic programming
-        qrsolve <- try( kernlab::ipop( c = rep(0.0, nlambda),
-                                       H = 2.0 * qmat,
-                                       A = matrix(1.0, nrow = 1, ncol = nlambda),
-                                       b = 1.0,
-                                       l = rep(0.0, nlambda),
-                                       u = rep(1.0, nlambda),
-                                       r = 0.0),
-                        TRUE)
+            #### The symmetric matrix in the quadratic programming
+            qmat_simp <- crossprod( matrix(y, nrow = n, ncol = nlambda_simp_0) - mu_cv_simp )
+            if(qp.scale == "max"){
+                qmat_simp <- qmat_simp / max(qmat_simp)
+            } else if(qp.scale == "1/n"){
+                qmat_simp <- qmat_simp / n
+            }
 
+            ####  Quadratic programming
+            qrsolve_simp <- try( kernlab::ipop( c = rep(0.0, nlambda_simp_0),
+                                               H = qmat_simp,
+                                               A = matrix(1.0, nrow = 1, ncol = nlambda_simp_0),
+                                               b = 1.0,
+                                               l = rep(0.0, nlambda_simp_0),
+                                               u = rep(1.0, nlambda_simp_0),
+                                               r = 0.0),
+                                TRUE)
 
+            res[["Simpson(1/3)"]] <- list()
+            if(inherits(qrsolve_simp, "try-error") == FALSE){
+
+                res[["Simpson(1/3)"]]$v <- qrsolve_simp@primal
+                lambda_raw_zero <- c(lambda_raw, 0.0)
+                scale <- (lambda_raw_zero[1] - lambda_raw_zero[2]) / 6
+                for( i in 1 : nlambda_raw ){
+                    scale <- c(scale,
+                               2 * (lambda_raw_zero[i] - lambda_raw_zero[i + 1]) / 3,
+                               (lambda_raw_zero[i] - lambda_raw_zero[i + 2]) / 6 )
+                }
+                scale[nlambda] <- (lambda_raw_zero[i] - lambda_raw_zero[i + 1]) / 6
+                res[["Simpson(1/3)"]]$w <- qrsolve_simp@primal / scale
+                res[["Simpson(1/3)"]]$convergence <- qrsolve_simp@how
+                res[["Simpson(1/3)"]]$pos_def <- all(eigen(qmat_simp)$values > 0)
+
+            }
+
+        }
         #### VZ: Adding QP for hybrid averaging
         if( "Hybrid" %in% rule ){
 
@@ -572,7 +632,13 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
             }
 
             # Symmetric matrix for QP
-            qmat_hybrid <- (1/n)*crossprod( matrix(y, nrow = n, ncol = ncol(hybrid_eta)) - mu_cv_hybrid)
+            qmat_hybrid <- crossprod( matrix(y, nrow = n, ncol = ncol(hybrid_eta)) - mu_cv_hybrid)
+            if(qp.scale == "max"){
+                qmat_hybrid <- qmat_hybrid / max(qmat_hybrid)
+            } else if(qp.scale == "1/n"){
+                qmat_hybrid <- qmat_hybrid / n
+            }
+
             #Quadratic programmint
             qrsolve_hybrid <- try(kernlab::ipop( c = rep(0.0, ncol(hybrid_eta)),
                                                  H = 2.0 * qmat_hybrid,
@@ -590,10 +656,8 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                 res[["Hybrid"]]$convergence <- qrsolve_hybrid@how
                 res[["Hybrid"]]$models <- hybrid_comb
                 res[["Hybrid"]]$pos_def <- all(eigen(qmat_hybrid)$values > 0)
-
-            }else{
-                res[["Hybrid"]] <- qrsolve_hybrid
             }
+
         }
 
         #### VZ: Adding QP for Singleton averaging
@@ -606,7 +670,12 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
             }
 
             # Symmetric matrix for QP
-            qmat_singleton <- (1/n)*crossprod( matrix(y, nrow = n, ncol = ncol(singleton_eta)) - mu_cv_singleton)
+            qmat_singleton <- crossprod( matrix(y, nrow = n, ncol = ncol(singleton_eta)) - mu_cv_singleton)
+            if(qp.scale == "max"){
+                qmat_singleton <- qmat_singleton / max(qmat_singleton)
+            } else if(qp.scale == "1/n"){
+                qmat_singleton <- qmat_singleton / n
+            }
 
             #Quadratic programming
             qrsolve_singleton <- try(kernlab::ipop( c = rep(0.0, ncol(singleton_eta)),
@@ -624,63 +693,8 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                 res[["Singleton"]]$w <- qrsolve_singleton@primal
                 res[["Singleton"]]$convergence <- qrsolve_singleton@how
                 res[["Singleton"]]$pos_def <- all(eigen(qmat_singleton)$values > 0)
-            }else{
-                res[["Singleton"]] <- qrsolve_singleton
             }
 
-        }
-
-        if( inherits(qrsolve_raw, "try-error") == FALSE ){
-
-            ####
-            res$lambda <- lambda
-            res$cvval <- matrix(qrsolve@primal, nrow = 1 ) %*% qmat %*% matrix(qrsolve@primal, ncol = 1 )
-            convergence <- qrsolve@how
-
-            #### SJ: Put the estimates in the right slot, depending on the quadrature method
-            if( "raw" %in% rule ){
-                res[["raw"]] <- list()
-                res[["raw"]]$w <- qrsolve_raw@primal
-                res[["raw"]]$convergence <- convergence
-                res[["raw"]]$lambda <- lambda_raw_0
-                res[["raw"]]$pos_def <- all(eigen(qmat_raw)$values > 0)
-            }
-            if( "Riemann" %in% rule ){
-                res[["Riemann"]] <- list()
-                res[["Riemann"]]$v <- qrsolve@primal
-                lambdamat <- rbind( lambda[-1], lambda[-nlambda])
-                res[["Riemann"]]$w <- rbind( lambda[-1],
-                                             qrsolve@primal[-1] * 2.0 / (lambdamat[2,] - lambdamat[1,]) )
-                rownames(res[["Riemann"]]$w) <- c("lambda", "w")
-                res[["Riemann"]]$convergence <- convergence
-            }
-            if( "Simpson(1/3)" %in% rule ){
-                res[["Simpson(1/3)"]] <- list()
-                res[["Simpson(1/3)"]]$v <- qrsolve@primal
-                lambda_raw_zero <- c(lambda_raw, 0.0)
-                scale <- (lambda_raw_zero[1] - lambda_raw_zero[2]) / 6
-                for( i in 1 : nlambda_raw ){
-                    scale <- c(scale,
-                               2 * (lambda_raw_zero[i] - lambda_raw_zero[i + 1]) / 3,
-                               (lambda_raw_zero[i] - lambda_raw_zero[i + 2]) / 6 )
-                }
-                scale[nlambda] <- (lambda_raw_zero[i] - lambda_raw_zero[i + 1]) / 6
-                res[["Simpson(1/3)"]]$w <- rbind( lambda,
-                                                  qrsolve@primal / scale )
-                rownames(res[["Simpson(1/3)"]]$w) <- c("lambda", "w")
-                res[["Simpson(1/3)"]]$convergence <- convergence
-                res[["Simpson(1/3)"]]$pos_def <- all(eigen(qmat)$values > 0)
-            }
-            if( "Simpson(3/8)" %in% rule ){
-                res[["Simpson(3/8)"]] <- list()
-                res[["Simpson(3/8)"]]$v <- qrsolve@primal
-                #### SJ: Haven't finished this one.
-                res[["Simpson(3/8)"]]$convergence <- convergence
-            }
-            res$cvglmnet <- cvglm
-
-        } else {
-            res <- qrsolve
         }
 
     }
