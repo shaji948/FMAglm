@@ -1,4 +1,4 @@
-fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
+fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grouped,
                          penalty.factor = NULL, force.nlambda, singleton.interpcet.only = FALSE,
                          type.measure, rule, solnptol, qp.scale ){
 
@@ -10,6 +10,9 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
     res <- list() # Initiate returned list
     if(is.null(penalty.factor) == TRUE){
         penalty.factor <- rep(1.0, ncol(x))
+    }
+    if(is.null(nfolds) == TRUE){
+        nfolds = n
     }
 
     ########## Functions needed for weight estimations ##########
