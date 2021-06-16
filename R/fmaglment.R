@@ -614,7 +614,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                                2 * (lambda_raw_zero[i] - lambda_raw_zero[i + 1]) / 3,
                                (lambda_raw_zero[i] - lambda_raw_zero[i + 2]) / 6 )
                 }
-                scale[nlambda] <- (lambda_raw_zero[i] - lambda_raw_zero[i + 1]) / 6
+                scale[length(scale)] <- (lambda_raw_zero[i] - lambda_raw_zero[i + 1]) / 6
                 res[["Simpson(1/3)"]]$w <- qrsolve_simp@primal / scale
                 res[["Simpson(1/3)"]]$convergence <- qrsolve_simp@how
                 res[["Simpson(1/3)"]]$pos_def <- all(eigen(qmat_simp)$values > 0)
