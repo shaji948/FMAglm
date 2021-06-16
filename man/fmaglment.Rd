@@ -46,34 +46,38 @@ It returns a list of the following objects
 \item{raw:} if "raw" belongs to rule, then it contains a list of the following objects.
 \itemize{
   \item{w:} estimated weights.
-  \item{convergence:} 0 = converged.
-  \item{avecoef:} averaged beta coefficients.
-  \item{elapsed:} elapsed time in seconds.
+  \item{convergence:} 0 or converged = converged.
+  \item{avecoef:} averaged beta coefficients, if focus = "eta".
+  \item{elapsed:} elapsed time in seconds, if focus = "eta".
   \item{lambda:} the lambda sequence.
+  \item{pos_def:} whether QP is positive definite, if focus = "mu".
 }
 \item{Simpson(1/3):} if "Simpson(1/3)" belongs to rule, then it contains a list of the following objects.
 \itemize{
   \item{v:} estimated weights.
-  \item{convergence:} 0 = converged.
-  \item{avecoef:} averaged beta coefficients.
-  \item{elapsed:} elapsed time in seconds.
+  \item{convergence:} 0 or converged = converged.
+  \item{avecoef:} averaged beta coefficients, if focus = "eta".
+  \item{elapsed:} elapsed time in seconds, if focus = "eta".
   \item{w:} estimated (approximated) w function in the paper.
   \item{lambda:} the lambda sequence.
+  \item{pos_def:} whether QP is positive definite, if focus = "mu".
 }
 \item{Hybrid:} if "Hybrid" belongs to rule, then it contains a list of the following objects.
 \itemize{
   \item{w:} estimated weights.
-  \item{convergence:} 0 = converged.
-  \item{avecoef:} averaged beta coefficients.
-  \item{elapsed:} elapsed time in seconds.
+  \item{convergence:} 0 or converged = converged.
+  \item{avecoef:} averaged beta coefficients, if focus = "eta".
+  \item{elapsed:} elapsed time in seconds, if focus = "eta".
   \item{models:} unique model structures.
+  \item{pos_def:} whether QP is positive definite, if focus = "mu".
 }
 \item{Singleton:} if "Singleton" belongs to rule, then it contains a list of the following objects.
 \itemize{
   \item{w:} estimated weights.
-  \item{convergence:} 0 = converged.
-  \item{avecoef:} averaged beta coefficients.
-  \item{elapsed:} elapsed time in seconds.
+  \item{convergence:} 0 or converged = converged.
+  \item{avecoef:} averaged beta coefficients, if focus = "eta".
+  \item{elapsed:} elapsed time in seconds, if focus = "eta".
+  \item{pos_def:} whether QP is positive definite, if focus = "mu".
 }
 }
 }
@@ -83,18 +87,62 @@ Too lazy to write anything.
 }
 
 \examples{
-n <- 1100; a <- 1; C <- 1
-j <- 1:1000
-theta <- as.matrix((-1)^(j + 1)*C*sqrt(2*a)*j^(-a - 0.5), nrow = 1000)
-x <- matrix(rnorm((n*1000)), nrow = n, ncol = 1000)
-eta <- x * theta [It should be matrix multiplication, but I do not know how to put the percentage sign in thee documentation file.]
-y <- rpois(n, exp(eta))
-summary(exp(theta))
+data("ToyData_Binomial")
+fma.glmnet(x = ToyBinomial[1 : 100, paste("x", 1 : 8, sep = "")],
+           y = ToyBinomial[1 : 100, "y"],
+           focus = "mu",
+           family = "binomial",
+           nlambda = 50,
+           nfolds = 100,
+           grouped = FALSE,
+           type.measure = "class",
+           rule = c("raw", "Simpson(1/3)", "Hybrid", "Singleton"),
+           solnptol = 1e-08,
+           force.nlambda = TRUE,
+           qp.scale = "max",
+           singleton.interpcet.only = "true")
 
-fma <- fma.glmnet( x = x[1:100, 1 : 10], y = y[1:100], focus = "eta", family = "poisson",
-                               nlambda = 100, nfolds = 100, grouped = FALSE,
-                               penalty.factor = NULL, force.nlambda = TRUE, singleton.interpcet.only = TRUE,
-                               type.measure = "mse",
-                               rule = c("raw", "Simpson(1/3)", "Singleton", "Hybrid"),
-                               solnptol = 1e-6, qp.scale = "max" )
+fma.glmnet(x = ToyBinomial[1 : 100, paste("x", 1 : 8, sep = "")],
+           y = ToyBinomial[1 : 100, "y"],
+           focus = "eta",
+           family = "binomial",
+           nlambda = 50,
+           nfolds = 100,
+           grouped = FALSE,
+           type.measure = "class",
+           rule = c("raw", "Simpson(1/3)", "Hybrid", "Singleton"),
+           solnptol = 1e-08,
+           force.nlambda = TRUE,
+           qp.scale = "max",
+           singleton.interpcet.only = "true")
+
+data("ToyData_Poisson")
+fma.glmnet(x = ToyPoisson[1 : 100, paste("x", 1 : 8, sep = "")],
+           y = ToyPoisson[1 : 100, "y"],
+           focus = "mu",
+           family = "poisson",
+           nlambda = 50,
+           nfolds = 100,
+           grouped = FALSE,
+           type.measure = "mse",
+           rule = c("raw", "Simpson(1/3)", "Hybrid", "Singleton"),
+           solnptol = 1e-08,
+           force.nlambda = TRUE,
+           qp.scale = "max",
+           singleton.interpcet.only = "true")
+
+fma.glmnet(x = ToyPoisson[1 : 100, paste("x", 1 : 8, sep = "")],
+           y = ToyPoisson[1 : 100, "y"],
+           focus = "eta",
+           family = "poisson",
+           nlambda = 50,
+           nfolds = 100,
+           grouped = FALSE,
+           type.measure = "mse",
+           rule = c("raw", "Simpson(1/3)", "Hybrid", "Singleton"),
+           solnptol = 1e-08,
+           force.nlambda = TRUE,
+           qp.scale = "max",
+           singleton.interpcet.only = "true")
+
 }

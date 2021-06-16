@@ -188,7 +188,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
 
                         sing_fit <- glm.fit(cbind(1, x_i[ , l]), y_i,         # Fitting Singletons
                                             family = binomial())
-                        eta_sing[i, l] <- sum(c(1.0, x[i,])[sel] * coef(sel_fit))             # Extracting coefficients
+                        eta_sing[i, l] <- sum(c(1.0, x[i, l]) * coef(sing_fit))                     # Extracting coefficients
 
                     }
                     if(singleton.interpcet.only == TRUE){
@@ -523,6 +523,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                 res[["raw"]]$w <- qrsolve_raw@primal
                 res[["raw"]]$convergence <- qrsolve_raw@how
                 res[["raw"]]$pos_def <- all(eigen(qmat_raw)$values > 0)
+                res[["raw"]]$lambda <- lambda[["raw"]]
             }
 
         }
@@ -575,6 +576,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                 res[["Simpson(1/3)"]]$w <- qrsolve_simp@primal / scale
                 res[["Simpson(1/3)"]]$convergence <- qrsolve_simp@how
                 res[["Simpson(1/3)"]]$pos_def <- all(eigen(qmat_simp)$values > 0)
+                res[["Simpson(1/3)"]]$lambda <- lambda[["Simpson(1/3)"]]
 
             }
 
