@@ -131,7 +131,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
         lambda_raw <- fit_alldata$lambda
         nlambda_raw <- length(lambda_raw)
     }
-
+    rm(nlambda)
 
     #### ---------------------------------------------------- ####
     #### SJ: We need to create the "correct" lambda sequence from the lambda sequence in glmnet()
