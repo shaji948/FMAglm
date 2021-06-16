@@ -282,6 +282,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                         B_sing[, l, i] <-  matrix(coef(sing_fit))             # Extracting coefficients
 
                     }
+
                 }
 
             }
@@ -360,18 +361,6 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                 res[["Simpson(1/3)"]] <- nlopt_simp
             }
 
-
-            res[["Simpson(1/3)"]] <- list()
-            res[["Simpson(1/3)"]]$v <- nlopt$pars
-
-            #### SJ: You had the following, which is not correct.
-            #  w_res[even] = (2/3)*(l_seq[S] - l_seq[S - 1])
-            #  w_res[-even] = (1/6)*c((l_seq[S] - l_seq[S - 1]),(l_seq[length(l_seq)] - l_seq[length(l_seq) - 1]))
-            rownames(res[["Simpson(1/3)"]]$w) <- c("lambda", "w")
-            res[["Simpson(1/3)"]]$convergence <- convergence
-            #res[["Simpson(1/3)"]]$avecoef <- avecoef
-            res[["Simpson(1/3)"]]$elapsed <- elapsed
-
         }
         if("Simpson(3/8)" %in% rule){
             ####  SJ: Not finished yet
@@ -387,18 +376,27 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                                      control = list(trace = FALSE, tol = solnptol)),
                                TRUE)
 
-
-            res[["Singleton"]] <- list()
             if( inherits(nlopt_sing, "try-error") == FALSE){
+                res[["Singleton"]] <- list()
                 res[["Singleton"]]$w <- nlopt_sing$pars
                 res[["Singleton"]]$convergence <- nlopt_sing$convergence
                 res[["Singleton"]]$elapsed <- nlopt_sing$elapsed
+                coef_sing <- matrix(0, nbeta, nbeta - 1)
+                for( l in 1 : (nbeta - 1) ){
+                    if(family == "binomial"){
+                        sing_fit <- glm.fit(cbind(1, x[ , l]), y, family = binomial())
+                    } else if(family == "poisson"){
+                        sing_fit <- glm.fit(cbind(1, x[ , l]), y, family = poisson())
+                    }
+                    coef_sing[c(1, l + 1), l] <-  coef(sing_fit)
+                }
+                res[["Singleton"]]$avecoef <- coef_sing %*% matrix(nlopt_sing$pars, ncol = 1)
             }else{
                 res[["Singleton"]] <- nlopt_sing
             }
         }
-
         if("Hybrid" %in% rule){
+
             init_w_hybrid = matrix( 1 / ncol(hybrid_comb), nrow = ncol(hybrid_comb) )
             nlopt_hybrid <- try( solnp(pars = init_w_hybrid, fun = fun_prob_hybrid,
                                        eqfun = fun_eq_hybrid, eqB = c(1),
@@ -409,82 +407,27 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                                        control = list(trace = FALSE, tol = solnptol)),
                                  TRUE)
 
-            res[["Hybrid"]] <- list()
             if( inherits(nlopt_hybrid, "try-error") == FALSE){
+                res[["Hybrid"]] <- list()
                 res[["Hybrid"]]$w <- nlopt_hybrid$pars
                 res[["Hybrid"]]$convergence <- nlopt_hybrid$convergence
                 res[["Hybrid"]]$elapsed <- nlopt_hybrid$elapsed
                 res[["Hybrid"]]$models <- hybrid_comb
+                coef_hybrid <- matrix(0, nbeta, ncol(hybrid_comb))
+                for(j in 1 : ncol(hybrid_comb)){
+
+                    sel <- which(hybrid_comb[, j] %in% 1)
+                    if(family == "binomial"){
+                        sel_fit <- glm.fit(cbind(1, x)[, sel], y, family = binomial())
+                    } else if(family == "poisson"){
+                        sel_fit <- glm.fit(cbind(1, x)[, sel], y, family = poisson())
+                    }
+                    coef_hybrid[sel, j] <- coef(sel_fit)
+
+                }
             }else{
                 res[["Hybrid"]] <- nlopt_hybrid
             }
-        }
-
-        if( inherits(nlopt_raw, "try-error") == FALSE ){
-
-            #### Note: lambda sequence is decreasing.
-            fit_alldata = glmnet(x, y, family = family, lambda = lambda[-nlambda] )
-            coef_alldata <- as.matrix( coef( object = fit_alldata ) )
-            coef_alldata <- cbind(coef_alldata, fulcoef)
-
-            ####
-            res$lambda <- lambda
-            res$cvval <- fun_prob( w = nlopt_raw$pars, B = B_raw, x = x, y = y, family = family )
-            weights_path <- as.matrix(nlopt_raw$pars)
-            convergence <- nlopt_raw$convergence #### 0 = converged
-            #avecoef <- coef_alldata %*% weights_path
-            elapsed <- nlopt_raw$elapsed
-            #### SJ: Put the estimates in the right slot, depending on the quadrature method
-            if( "raw" %in% rule ){
-                res[["raw"]] <- list()
-                res[["raw"]]$w <- nlopt_raw$pars
-                res[["raw"]]$convergence <- convergence
-                #res[["raw"]]$avecoef <- avecoef
-                res[["raw"]]$elapsed <- elapsed
-                res[["raw"]]$lambda <- lambda_raw_0
-            }
-            if( "Riemann" %in% rule ){
-                res[["Riemann"]] <- list()
-                res[["Riemann"]]$v <- nlopt$pars
-                lambdamat <- rbind( lambda[-1], lambda[-nlambda])
-                res[["Riemann"]]$w <- rbind( lambda[-1],
-                                             nlopt$pars[-1] * 2.0 / (lambdamat[2,] - lambdamat[1,]) )
-                rownames(res[["Riemann"]]$w) <- c("lambda", "w")
-                res[["Riemann"]]$convergence <- convergence
-                #res[["Riemann"]]$avecoef <- avecoef
-                res[["Riemann"]]$elapsed <- elapsed
-            }
-            if( "Simpson(1/3)" %in% rule ){
-                res[["Simpson(1/3)"]] <- list()
-                res[["Simpson(1/3)"]]$v <- nlopt$pars
-                lambda_raw_zero <- c(lambda_raw, 0.0)
-                scale <- (lambda_raw_zero[1] - lambda_raw_zero[2]) / 6
-                for( i in 1 : nlambda_raw ){
-                    scale <- c(scale,
-                               2 * (lambda_raw_zero[i] - lambda_raw_zero[i + 1]) / 3,
-                               (lambda_raw_zero[i] - lambda_raw_zero[i + 2]) / 6 )
-                }
-                scale[nlambda] <- (lambda_raw_zero[i] - lambda_raw_zero[i + 1]) / 6
-                res[["Simpson(1/3)"]]$w <- rbind( lambda,
-                                                  nlopt$pars / scale )
-                #### SJ: You had the following, which is not correct.
-                #  w_res[even] = (2/3)*(l_seq[S] - l_seq[S - 1])
-                #  w_res[-even] = (1/6)*c((l_seq[S] - l_seq[S - 1]),(l_seq[length(l_seq)] - l_seq[length(l_seq) - 1]))
-                rownames(res[["Simpson(1/3)"]]$w) <- c("lambda", "w")
-                res[["Simpson(1/3)"]]$convergence <- convergence
-                #res[["Simpson(1/3)"]]$avecoef <- avecoef
-                res[["Simpson(1/3)"]]$elapsed <- elapsed
-            }
-            if( "Simpson(3/8)" %in% rule ){
-                res[["Simpson(3/8)"]] <- list()
-                res[["Simpson(3/8)"]]$v <- nlopt$pars
-                #### SJ: Haven't finished this one.
-                res[["Simpson(3/8)"]]$convergence <- convergence
-                #res[["Simpson(3/8)"]]$avecoef <- avecoef
-                res[["Simpson(3/8)"]]$elapsed <- elapsed
-            }
-        } else {
-            res <- nlopt
         }
 
     } else if( focus == "mu" ){
