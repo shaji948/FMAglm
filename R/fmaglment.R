@@ -1,5 +1,5 @@
 fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
-                         penalty.factor = NULL, force.nlambda,
+                         penalty.factor = NULL, force.nlambda, singleton.interpcet.only = FALSE,
                          type.measure, rule, solnptol, qp.scale ){
 
     #### Note: Only jackknife is supported in this version.
@@ -14,95 +14,24 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
 
     ########## Functions needed for weight estimations ##########
     #### SJ: Only useful if focus = "beta"
-    if( focus == "beta" ){
+    if( focus == "eta" ){
 
         ####  SJ: fun_prob computes the cross-validation MSE
-        fun_prob = function(w, B, x, y, family){
+        fun_prob = function(w, Eta, y, family){
 
-            mu = matrix(NA, nrow = nrow(x), ncol = 1)
-            for(i in 1 : nrow(x)){
-
-                beta_bar = B[, , i] %*% matrix(w, ncol = 1)
-
-                if( family == "binomial" ){
-                    mu[i] = plogis( sum( c(beta_bar) * c(1, x[i,]) ) )
-                } else if( family == "poisson" ){
-                    mu[i] = exp( sum( c(beta_bar) * c(1, x[i,]) ) )
-                }
-
+            ave.eta <- Eta %*% matrix(w, ncol = 1)
+            if( family == "binomial" ){
+                mu = plogis(ave.eta)
+            } else if( family == "poisson" ){
+                mu = exp(ave.eta)
             }
             return(mean((y - mu) ^ 2))
 
         }
 
         ####  Sum of the weights
-        fun_eq = function(w, B, x, y, family){
-            z = sum(w)
-            return(z)
-        }
-
-
-        #### VZ: New function needed for Singleton and hybrid averaging, generally a bit
-        #### VZ: messier than the one above, since regressors are not the same in all models
-        if("Singleton" %in% rule){
-            fun_prob_sing <- function(w, B, x, y, family){
-                mu <- matrix(0, nrow = nrow(x))
-
-                for(i in 1:nrow(x)){   # Looping through folds
-
-                    if(family == "binomial"){
-                        mu[i] <- c(w[1]) * sum( c(B[, 1, i]) * c(1, x[i, 1]))
-                        for(j in 2:(nbeta - 1) ){  # Looping through individual Singletons
-                            mu[i] <-  mu[i] + c(w[j]) * sum( c(B[, j, i]) * c(1, x[i, j]))
-                        }
-                        mu[i] <- plogis(mu[i])
-                    }
-
-                    if(family == "poisson"){
-                        mu[i] <- c(w[1]) * sum( c(B[, 1, i]) * c(1, x[i, 1]))
-                        for(j in 2:(nbeta - 1) ){  # Looping through individual Singletons
-                            mu[i] <-  mu[i] + c(w[j]) * sum( c(B[, j, i]) * c(1, x[i, j]))
-                        }
-                        mu[i] <- exp(mu[i])
-                    }
-                }
-                return(mean((y - mu)^2))
-            }
-        }
-
-
-        if("Hybrid" %in% rule){
-            fun_prob_hybrid <- function(w, B, x, y, family, comb){
-                mu <- matrix(0, nrow = nrow(x))
-
-                for(i in 1:nrow(x)){   # Looping through folds
-
-                    #### VZ: Since the betas are not all of the same dimension, I could
-                    #### VZ: not find a better way of storing them than in a list
-
-                    if(family == "binomial"){
-                        for(j in 1:ncol(comb) ){  # Looping through individual models
-                            sel <- which(comb[, j] %in% 1)
-                            mu[i] <-  mu[i] + c(w[j] %*% cbind(1, x)[i, sel] %*% B[[i]][[j]])
-                        }
-                        mu[i] <- plogis(mu[i])
-                    }
-
-                    if(family == "poisson"){
-                        for(j in 1:ncol(comb) ){  # Looping through individual models
-                            sel <- which(comb[, j] %in% 1)
-                            mu[i] <-  mu[i] + c(w[j] %*% cbind(1, x)[i, sel] %*% B[[i]][[j]])
-                        }
-                        mu[i] <- exp(mu[i])
-                    }
-                }
-                return(mean((y - mu)^2))
-            }
-
-            fun_eq_hybrid = function(w, B, x, y, family, comb){
-                z = sum(w)
-                return(z)
-            }
+        fun_eq = function(w, Eta, y, family){
+            return(sum(w))
         }
 
     }
@@ -194,14 +123,11 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
 
     #### ---------------------------------------------------- ####
     #### SJ: Using the above lambda sequence, we can start the CV step.
-    if( focus == "beta" ) {
-
-        # B: Array for beta
-        B <- array(0, dim = c(ncol(x) + 1, length(lambda_long) + 1, nfolds))
-        B_raw <- array(0, dim = c(ncol(x) + 1, length(lambda_raw) + 1, nfolds))
+    if( focus == "eta" ) {
 
         #### VZ: Adding corresponding storage for hybrid and singletons
         if("Hybrid" %in% rule){
+
             betas_lasso <-  as.matrix(coef(fit_alldata, s = lambda_raw))  # Coefficients for hybrid lambda
             u <-  betas_lasso != 0                    # Logical, TRUE if coefficient is not 0
             hybrid_comb <- unique(u, MARGIN = 2)     # Filtering unique model forms
@@ -217,49 +143,57 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                     hybrid_comb <- hybrid_comb[, -full.index[-1]]
                 }
             }
-            B_hybrid = list()
+            eta_hybrid = matrix(0, nfolds, ncol(hybrid_comb))
+
         }
         if("Singleton" %in% rule){
-            B_sing = array(0, dim = c(2, (nbeta - 1), nfolds))
+            if(singleton.interpcet.only == TRUE){
+                eta_sing = matrix(0, nfolds, nbeta)
+            } else {
+                eta_sing = matrix(0, nfolds, nbeta - 1)
+            }
         }
 
         ####  CV part. This part takes a long time, especially Hybrid and singleton.
+        fuleta <- rep(NA, nfolds)
         for(i in 1 : nfolds){
 
             x_i <- x[-i, , drop = FALSE]
             y_i <- y[-i]
 
-            ####  glmnet()
-            cvfit_long <- glmnet(x = x_i, y = y_i, family = family, lambda = lambda_long,
-                                 penalty.factor = penalty.factor)
-            #fit <-  glmnet(x = x_i, y = y_i, family = family, lambda = lambda)
-            #fit_raw <- glmnet(x = x_i, y = y_i, family = family, lambda = lambda_raw)
             ####  full model and others.
             if( family == "binomial" ){
+
                 cvfit <- glm.fit( x = cbind(1, x_i), y = y_i, family = binomial() )
 
                 #### VZ: Adding hybrid and singleton CV
                 if( "Hybrid" %in% rule ){
-
-                    B_hybrid[[i]] <- list()
 
                     for( j in 1:ncol(hybrid_comb) ){                      # Looping through model forms
 
                         sel <- which(hybrid_comb[, j] %in% 1)               # Indices of regressors to use
                         sel_fit <- glm.fit(cbind(1, x_i)[, sel], y_i,
                                            family = binomial())             # Fitting model
-                        B_hybrid[[i]][[j]] <- coef(sel_fit)                 # Extracting coefficients
+                        eta_hybrid[i, j] <- sum(c(1.0, x[i,])[sel] * coef(sel_fit))                     # Extracting coefficients
                     }
+
                 }
 
                 if( "Singleton" %in% rule ){
+
                     for( l in 1:(nbeta - 1) ){                              # Looping through Singletons
 
                         sing_fit <- glm.fit(cbind(1, x_i[ , l]), y_i,         # Fitting Singletons
                                             family = binomial())
-                        B_sing[, l, i] <-  matrix(coef(sing_fit))             # Extracting coefficients
+                        eta_sing[i, l] <- sum(c(1.0, x[i,])[sel] * coef(sel_fit))             # Extracting coefficients
+
                     }
+                    if(singleton.interpcet.only == TRUE){
+                        eta_sing[i, nbeta] = qlogis(mean(y_i))
+                    }
+
                 }
+
             } else if( family == "poisson" ){
 
                 ####  Full model.
@@ -268,67 +202,70 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                 #### VZ: Adding hybrid and singleton CV
                 if( "Hybrid" %in% rule ){
 
-                    B_hybrid[[i]] <- list()
-
                     for( j in 1 : ncol(hybrid_comb) ){                      # Looping through model forms
 
                         sel <- which(hybrid_comb[, j] %in% 1)               # Indices of regressors to use
                         sel_fit <- glm.fit(cbind(1, x_i)[, sel], y_i,
                                            family = poisson())             # Fitting model
-                        B_hybrid[[i]][[j]] <- coef(sel_fit)                 # Extracting coefficients
+                        eta_hybrid[i, j] <- sum(c(1.0, x[i,])[sel] * coef(sel_fit))                 # Extracting coefficients
 
                     }
+
                 }
 
                 if( "Singleton" %in% rule ){
 
-                    for( l in 1 : (nbeta - 1) ){                              # Looping through Singletons
+                    for( l in 1:(nbeta - 1) ){                              # Looping through Singletons
 
                         sing_fit <- glm.fit(cbind(1, x_i[ , l]), y_i,         # Fitting Singletons
                                             family = poisson())
-                        B_sing[, l, i] <-  matrix(coef(sing_fit))             # Extracting coefficients
+                        eta_sing[i, l] <- sum(c(1.0, x[i, l]) * coef(sing_fit))             # Extracting coefficients
 
+                    }
+                    if(singleton.interpcet.only == TRUE){
+                        eta_sing[i, nbeta] = log(mean(y_i))
                     }
 
                 }
 
             }
 
-            #### SJ: We add the full model as the last column, as lambda is a decreasing sequence
-            B[, , i] = cbind( as.matrix(coef(cvfit_long)),
-                              cvfit$coefficients )
-            B_raw[, , i] = cbind( as.matrix(coef(cvfit_long, s = lambda_raw)),
-                                  cvfit$coefficients )
+            fuleta[i] <- sum(c(1.0, x[i,]) * cvfit$coefficients)
 
         }
+        ####  SJ: The essence of averaging beta is just to average the linear predictor.
+        ####      Hence, we can use cv.glmnet to help us to get the CV linear predictor.
+        cvglm = try(cv.glmnet(x, y, family = family, nfolds = nfolds,
+                              grouped = grouped, keep = TRUE, lambda = lambda_long,
+                              type.measure = type.measure,
+                              penalty.factor = penalty.factor), TRUE)
+        glmnet.eta <- cbind(cvglm$fit.preval, fuleta)
 
         #### SJ: In order to estimate the weights, we add 0 to the lambda sequence here.
         ####     Need to make sure that lambda remains a decreasing sequence!
-        fit_long <- glmnet(x = x, y = y, family = family, lambda = lambda_long,
-                           penalty.factor = penalty.factor)
         if("raw" %in% rule){
 
-            coef_raw <- cbind(as.matrix(coef(fit_long, s = lambda[["raw"]])),
-                              fulcoef)
+            lambda_index <- match(lambda[["raw"]], lambda_long)
+            eta.raw <- cbind(glmnet.eta[, lambda_index], fuleta)
+            coef_raw = cbind(as.matrix(coef(cvglm, s = lambda[["raw"]])),
+                                       fulcoef)
             lambda[["raw"]] <- c(lambda[["raw"]], 0)
             init_w = rep( 1 / length(lambda[["raw"]]), length(lambda[["raw"]]) )
-            nlopt_raw <- try( solnp(pars = init_w, fun = fun_prob, eqfun = fun_eq, eqB = c(1),
-                                    LB = rep(0, length(lambda[["raw"]])),
-                                    UB = rep(1, length(lambda[["raw"]])),
-                                    B = B_raw, x = x, y = y, family = family,
-                                    control = list(trace = FALSE, tol = solnptol)),
+            nlopt_raw <- try( Rsolnp::solnp(pars = init_w, fun = fun_prob, eqfun = fun_eq, eqB = c(1),
+                                            LB = rep(0, length(lambda[["raw"]])),
+                                            UB = rep(1, length(lambda[["raw"]])),
+                                            Eta = eta.raw, y = y, family = family,
+                                            control = list(trace = FALSE, tol = solnptol)),
                               TRUE )
+            res[["raw"]] <- list()
             if( inherits(nlopt_raw, "try-error") == FALSE ){
 
-                res[["raw"]] <- list()
                 res[["raw"]]$w <- nlopt_raw$pars
                 res[["raw"]]$convergence <- nlopt_raw$convergence #### 0 = converged
                 res[["raw"]]$avecoef <- coef_raw %*% matrix(nlopt_raw$pars, ncol = 1)
                 res[["raw"]]$elapsed <- nlopt_raw$elapsed
                 res[["raw"]]$lambda <- lambda[["raw"]]
 
-            } else {
-                res[["raw"]] <- nlopt_raw
             }
 
         }
@@ -338,19 +275,21 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
         }
         if("Simpson(1/3)" %in% rule){
 
-            coef_simp <- cbind(as.matrix(coef(fit_long, s = lambda[["Simpson(1/3)"]])),
-                               fulcoef)
+            lambda_index <- match(lambda[["Simpson(1/3)"]], lambda_long)
+            eta.simp <- cbind(glmnet.eta[, lambda_index], fuleta)
+            coef_simp = cbind(as.matrix(coef(cvglm, s = lambda[["Simpson(1/3)"]])),
+                             fulcoef)
             lambda[["Simpson(1/3)"]] <- c(lambda[["Simpson(1/3)"]], 0)
             init_w = rep( 1 / length(lambda[["Simpson(1/3)"]]), length(lambda[["Simpson(1/3)"]]) )
-            nlopt_simp <- try( solnp(pars = init_w, fun = fun_prob, eqfun = fun_eq, eqB = c(1),
-                                     LB = rep(0, length(lambda[["Simpson(1/3)"]])),
-                                     UB = rep(1, length(lambda[["Simpson(1/3)"]])),
-                                     B = B, x = x, y = y, family = family,
-                                     control = list(trace = FALSE, tol = solnptol)),
+            nlopt_simp <- try( Rsolnp::solnp(pars = init_w, fun = fun_prob, eqfun = fun_eq, eqB = c(1),
+                                             LB = rep(0, length(lambda[["Simpson(1/3)"]])),
+                                             UB = rep(1, length(lambda[["Simpson(1/3)"]])),
+                                             Eta = eta.simp, y = y, family = family,
+                                             control = list(trace = FALSE, tol = solnptol)),
                                TRUE )
+            res[["Simpson(1/3)"]] <- list()
             if( inherits(nlopt_simp, "try-error") == FALSE ){
 
-                res[["Simpson(1/3)"]] <- list()
                 res[["Simpson(1/3)"]]$v <- nlopt_simp$pars
                 res[["Simpson(1/3)"]]$convergence <- nlopt_simp$convergence #### 0 = converged
                 res[["Simpson(1/3)"]]$avecoef <- coef_simp %*% matrix(nlopt_simp$pars, ncol = 1)
@@ -366,8 +305,6 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                 res[["Simpson(1/3)"]]$w <- nlopt_simp$pars / scale
                 res[["Simpson(1/3)"]]$lambda <- lambda[["Simpson(1/3)"]]
 
-            } else {
-                res[["Simpson(1/3)"]] <- nlopt_simp
             }
 
         }
@@ -377,16 +314,27 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
         }
         if("Singleton" %in% rule){
 
-            init_w_sing = matrix( 1 / (nbeta - 1), nrow = (nbeta - 1) )
-            nlopt_sing <- try( solnp(pars = init_w_sing, fun = fun_prob_sing, eqfun = fun_eq,
-                                     eqB = c(1),
-                                     LB = rep(0, (nbeta - 1)), UB = rep(1, (nbeta - 1)),
-                                     B = B_sing, x = x, y = y, family = family,
-                                     control = list(trace = FALSE, tol = solnptol)),
-                               TRUE)
+            if(singleton.interpcet.only == TRUE){
+                init_w_sing = matrix( 1 / nbeta, nrow = nbeta )
+                nlopt_sing <- try( Rsolnp::solnp(pars = init_w_sing, fun = fun_prob, eqfun = fun_eq,
+                                                 eqB = c(1),
+                                                 LB = rep(0, nbeta), UB = rep(1, nbeta),
+                                                 Eta = eta_sing, y = y, family = family,
+                                                 control = list(trace = FALSE, tol = solnptol)),
+                                   TRUE)
+            } else {
+                init_w_sing = matrix( 1 / (nbeta - 1), nrow = (nbeta - 1) )
+                nlopt_sing <- try( Rsolnp::solnp(pars = init_w_sing, fun = fun_prob, eqfun = fun_eq,
+                                                 eqB = c(1),
+                                                 LB = rep(0, (nbeta - 1)), UB = rep(1, (nbeta - 1)),
+                                                 Eta = eta_sing, y = y, family = family,
+                                                 control = list(trace = FALSE, tol = solnptol)),
+                                   TRUE)
+            }
 
+            res[["Singleton"]] <- list()
             if( inherits(nlopt_sing, "try-error") == FALSE){
-                res[["Singleton"]] <- list()
+
                 res[["Singleton"]]$w <- nlopt_sing$pars
                 res[["Singleton"]]$convergence <- nlopt_sing$convergence
                 res[["Singleton"]]$elapsed <- nlopt_sing$elapsed
@@ -399,25 +347,28 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                     }
                     coef_sing[c(1, l + 1), l] <-  coef(sing_fit)
                 }
+                if(singleton.interpcet.only == TRUE){
+                    coef_sing = cbind(coef_sing, rep(0, nbeta))
+                    coef_sing[1, nbeta] = log(mean(y))
+                }
                 res[["Singleton"]]$avecoef <- coef_sing %*% matrix(nlopt_sing$pars, ncol = 1)
-            }else{
-                res[["Singleton"]] <- nlopt_sing
             }
+
         }
         if("Hybrid" %in% rule){
 
             init_w_hybrid = matrix( 1 / ncol(hybrid_comb), nrow = ncol(hybrid_comb) )
-            nlopt_hybrid <- try( solnp(pars = init_w_hybrid, fun = fun_prob_hybrid,
-                                       eqfun = fun_eq_hybrid, eqB = c(1),
-                                       LB = rep(0, ncol(hybrid_comb)),
-                                       UB = rep(1, ncol(hybrid_comb)),
-                                       B = B_hybrid, x = x, y = y,
-                                       family = family, comb = hybrid_comb,
-                                       control = list(trace = FALSE, tol = solnptol)),
+            nlopt_hybrid <- try( Rsolnp::solnp(pars = init_w_hybrid, fun = fun_prob,
+                                               eqfun = fun_eq, eqB = c(1),
+                                               LB = rep(0, ncol(hybrid_comb)),
+                                               UB = rep(1, ncol(hybrid_comb)),
+                                               Eta = eta_hybrid, y = y, family = family,
+                                               control = list(trace = FALSE, tol = solnptol)),
                                  TRUE)
 
+            res[["Hybrid"]] <- list()
             if( inherits(nlopt_hybrid, "try-error") == FALSE){
-                res[["Hybrid"]] <- list()
+
                 res[["Hybrid"]]$w <- nlopt_hybrid$pars
                 res[["Hybrid"]]$convergence <- nlopt_hybrid$convergence
                 res[["Hybrid"]]$elapsed <- nlopt_hybrid$elapsed
@@ -434,9 +385,10 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                     coef_hybrid[sel, j] <- coef(sel_fit)
 
                 }
-            }else{
-                res[["Hybrid"]] <- nlopt_hybrid
+                res[["Hybrid"]]$avecoef <- coef_hybrid %*% matrix(nlopt_hybrid$pars, ncol = 1)
+
             }
+
         }
 
     } else if( focus == "mu" ){
@@ -469,6 +421,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
         fulmod_eta <- rep( NA, nrow(x) )
         hybrid_eta <- matrix(NA, nrow = nrow(x), ncol = ncol(hybrid_comb) )
         singleton_eta <- matrix(0, nrow = nrow(x), ncol = (nbeta - 1) )
+        ####  SJ: It is possible to write the following loop in Rcpp to gain speed.
         for( i in 1 : nrow(x) ){
 
             x_i <- x[-i,, drop = FALSE]
@@ -498,6 +451,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda, nfolds, grouped,
                 }
 
             } else if( family == "poisson" ){
+
                 cvfit <- glm.fit( x = cbind(1, x_i), y = y_i, family = poisson() )
 
                 #### VZ: Hybrid CV
