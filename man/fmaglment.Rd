@@ -5,7 +5,7 @@
 \usage{
 fma.glmnet( x, y, focus, family, nlambda = 100, nfolds = NULL, grouped,
             penalty.factor = NULL, force.nlambda,
-            singleton.interpcet.only = FALSE,
+            singleton.intercept.only = FALSE,
             type.measure = "mse", rule, solnptol, qp.scale )
 }
 
@@ -28,7 +28,7 @@ fma.glmnet( x, y, focus, family, nlambda = 100, nfolds = NULL, grouped,
 
 \item{force.nlambda}{it is common that the user specify a value of nlambda, but the actual number of lambda is lower than nlambda. If force.nlambda = TRUE, the number of lambda values is forced to be nlambda by forming a better lambda sequence.}
 
-\item{singleton.interpcet.only}{if TRUE, then the interpcet only model is also included in the singleton models. FALSE means that the intercept only model is left out.}
+\item{singleton.intercept.only}{if TRUE, then the interpcet only model is also included in the singleton models. FALSE means that the intercept only model is left out.}
 
 \item{type.measure}{only "mse" is available.}
 
@@ -51,6 +51,7 @@ It returns a list of the following objects
   \item{elapsed:} elapsed time in seconds, if focus = "eta".
   \item{lambda:} the lambda sequence.
   \item{pos_def:} whether QP is positive definite, if focus = "mu".
+  \item{coef:} the matrix containing all estimated beta, if focus = "mu".
 }
 \item{Simpson(1/3):} if "Simpson(1/3)" belongs to rule, then it contains a list of the following objects.
 \itemize{
@@ -61,6 +62,7 @@ It returns a list of the following objects
   \item{w:} estimated (approximated) w function in the paper.
   \item{lambda:} the lambda sequence.
   \item{pos_def:} whether QP is positive definite, if focus = "mu".
+  \item{coef:} the matrix containing all estimated beta, if focus = "mu".
 }
 \item{Hybrid:} if "Hybrid" belongs to rule, then it contains a list of the following objects.
 \itemize{
@@ -70,6 +72,7 @@ It returns a list of the following objects
   \item{elapsed:} elapsed time in seconds, if focus = "eta".
   \item{models:} unique model structures.
   \item{pos_def:} whether QP is positive definite, if focus = "mu".
+  \item{coef:} the matrix containing all estimated beta, if focus = "mu".
 }
 \item{Singleton:} if "Singleton" belongs to rule, then it contains a list of the following objects.
 \itemize{
@@ -78,6 +81,7 @@ It returns a list of the following objects
   \item{avecoef:} averaged beta coefficients, if focus = "eta".
   \item{elapsed:} elapsed time in seconds, if focus = "eta".
   \item{pos_def:} whether QP is positive definite, if focus = "mu".
+  \item{coef:} the matrix containing all estimated beta, if focus = "mu".
 }
 }
 }
@@ -100,7 +104,7 @@ fma.glmnet(x = ToyBinomial[1 : 100, paste("x", 1 : 8, sep = "")],
            solnptol = 1e-08,
            force.nlambda = TRUE,
            qp.scale = "max",
-           singleton.interpcet.only = "true")
+           singleton.intercept.only = TRUE)
 
 fma.glmnet(x = ToyBinomial[1 : 100, paste("x", 1 : 8, sep = "")],
            y = ToyBinomial[1 : 100, "y"],
@@ -114,7 +118,7 @@ fma.glmnet(x = ToyBinomial[1 : 100, paste("x", 1 : 8, sep = "")],
            solnptol = 1e-08,
            force.nlambda = TRUE,
            qp.scale = "max",
-           singleton.interpcet.only = "true")
+           singleton.intercept.only = TRUE)
 
 data("ToyData_Poisson")
 fma.glmnet(x = ToyPoisson[1 : 100, paste("x", 1 : 8, sep = "")],
@@ -129,7 +133,7 @@ fma.glmnet(x = ToyPoisson[1 : 100, paste("x", 1 : 8, sep = "")],
            solnptol = 1e-08,
            force.nlambda = TRUE,
            qp.scale = "max",
-           singleton.interpcet.only = "true")
+           singleton.intercept.only = TRUE)
 
 fma.glmnet(x = ToyPoisson[1 : 100, paste("x", 1 : 8, sep = "")],
            y = ToyPoisson[1 : 100, "y"],
@@ -143,6 +147,6 @@ fma.glmnet(x = ToyPoisson[1 : 100, paste("x", 1 : 8, sep = "")],
            solnptol = 1e-08,
            force.nlambda = TRUE,
            qp.scale = "max",
-           singleton.interpcet.only = "true")
+           singleton.intercept.only = TRUE)
 
 }

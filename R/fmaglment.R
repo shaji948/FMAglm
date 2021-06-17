@@ -1,5 +1,5 @@
 fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grouped,
-                         penalty.factor = NULL, force.nlambda, singleton.interpcet.only = FALSE,
+                         penalty.factor = NULL, force.nlambda, singleton.intercept.only = FALSE,
                          type.measure, rule, solnptol, qp.scale ){
 
     #### Note: Only jackknife is supported in this version.
@@ -150,7 +150,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
 
         }
         if("Singleton" %in% rule){
-            if(singleton.interpcet.only == TRUE){
+            if(singleton.intercept.only == TRUE){
                 eta_sing = matrix(0, nfolds, nbeta)
             } else {
                 eta_sing = matrix(0, nfolds, nbeta - 1)
@@ -191,7 +191,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                         eta_sing[i, l] <- sum(c(1.0, x[i, l]) * coef(sing_fit))                     # Extracting coefficients
 
                     }
-                    if(singleton.interpcet.only == TRUE){
+                    if(singleton.intercept.only == TRUE){
                         eta_sing[i, nbeta] = qlogis(mean(y_i))
                     }
 
@@ -225,7 +225,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                         eta_sing[i, l] <- sum(c(1.0, x[i, l]) * coef(sing_fit))             # Extracting coefficients
 
                     }
-                    if(singleton.interpcet.only == TRUE){
+                    if(singleton.intercept.only == TRUE){
                         eta_sing[i, nbeta] = log(mean(y_i))
                     }
 
@@ -320,7 +320,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
         }
         if("Singleton" %in% rule){
 
-            if(singleton.interpcet.only == TRUE){
+            if(singleton.intercept.only == TRUE){
                 init_w_sing = matrix( 1 / nbeta, nrow = nbeta )
                 nlopt_sing <- try( Rsolnp::solnp(pars = init_w_sing, fun = fun_prob, eqfun = fun_eq,
                                                  eqB = c(1),
@@ -353,7 +353,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                     }
                     coef_sing[c(1, l + 1), l] <-  coef(sing_fit)
                 }
-                if(singleton.interpcet.only == TRUE){
+                if(singleton.intercept.only == TRUE){
                     coef_sing = cbind(coef_sing, rep(0, nbeta))
                     coef_sing[1, nbeta] = log(mean(y))
                 }
@@ -428,7 +428,12 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
         ####  VZ: Fit hybrid and Singletons
         fulmod_eta <- rep( NA, nrow(x) )
         hybrid_eta <- matrix(NA, nrow = nrow(x), ncol = ncol(hybrid_comb) )
-        singleton_eta <- matrix(0, nrow = nrow(x), ncol = (nbeta - 1) )
+        if(singleton.intercept.only == TRUE){
+            singleton_eta <- matrix(0, nrow = nrow(x), ncol = nbeta )
+        } else {
+            singleton_eta <- matrix(0, nrow = nrow(x), ncol = (nbeta - 1) )
+        }
+
         ####  SJ: It is possible to write the following loop in Rcpp to gain speed.
         for( i in 1 : nrow(x) ){
 
@@ -456,6 +461,9 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                         b_sing <-  matrix(coef(sing_fit))                     # Extracting coefficients
                         singleton_eta[i, l] <- cbind(1, x[i, l]) %*% b_sing   # Predicting
                     }
+                    if(singleton.intercept.only == TRUE){
+                        singleton_eta[i, nbeta] = qlogis(mean(y_i))
+                    }
                 }
 
             } else if( family == "poisson" ){
@@ -476,12 +484,16 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
 
                 #### VZ: Singleton CV
                 if( "Singleton" %in% rule ){
+
                     for( l in 1:(nbeta - 1) ){                              # Looping through Singletons
                         sing_fit <- glm.fit(cbind(1, x_i[ , l]), y_i,         # Fitting Singletons
                                             family = poisson())
                         b_sing <-  matrix(coef(sing_fit))                     # Extracting coefficients
                         singleton_eta[i, l] <- cbind(1, x[i, l]) %*% b_sing   # Predicting
 
+                    }
+                    if(singleton.intercept.only == TRUE){
+                        singleton_eta[i, nbeta] = log(mean(y_i))
                     }
 
                 }
@@ -492,6 +504,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
 
         #### SJ: need to make sure fit.preval is the linear predictor scale
         ####     which is true in version 4.0-2
+        all.coef <- as.matrix(coef(cvglm, s = lambda_long))
         if("raw" %in% rule){
 
             lambda_index <- match(lambda[["raw"]], lambda_long)
@@ -529,6 +542,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                 res[["raw"]]$convergence <- qrsolve_raw@how
                 res[["raw"]]$pos_def <- all(eigen(qmat_raw)$values > 0)
                 res[["raw"]]$lambda <- lambda[["raw"]]
+                res[["raw"]]$coef <- all.coef[, lambda_index]
             }
 
         }
@@ -582,6 +596,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                 res[["Simpson(1/3)"]]$convergence <- qrsolve_simp@how
                 res[["Simpson(1/3)"]]$pos_def <- all(eigen(qmat_simp)$values > 0)
                 res[["Simpson(1/3)"]]$lambda <- lambda[["Simpson(1/3)"]]
+                res[["Simpson(1/3)"]]$coef <- all.coef[, lambda_index]
 
             }
 
@@ -616,10 +631,22 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
             #### VZ: Adding results to function output
             res[["Hybrid"]] <- list()
             if( inherits(qrsolve_hybrid, "try-error") == FALSE){
+
                 res[["Hybrid"]]$w <- qrsolve_hybrid@primal
                 res[["Hybrid"]]$convergence <- qrsolve_hybrid@how
                 res[["Hybrid"]]$models <- hybrid_comb
                 res[["Hybrid"]]$pos_def <- all(eigen(qmat_hybrid)$values > 0)
+                res[["Hybrid"]]$coef <- matrix(0, nbeta, ncol(hybrid_comb))
+                for( j in 1 : ncol(hybrid_comb) ){
+                    sel <-  which(hybrid_comb[, j] %in% 1)
+                    if(family == "binomial"){
+                        sel_fit <-  glm.fit(cbind(1, x)[, sel], y, family = binomial())
+                    } else if(family == "poisson"){
+                        sel_fit <-  glm.fit(cbind(1, x)[, sel], y, family = poisson())
+                    }
+                    res[["Hybrid"]]$coef[sel, j] <- coef(sel_fit)
+                }
+
             }
 
         }
@@ -657,6 +684,27 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                 res[["Singleton"]]$w <- qrsolve_singleton@primal
                 res[["Singleton"]]$convergence <- qrsolve_singleton@how
                 res[["Singleton"]]$pos_def <- all(eigen(qmat_singleton)$values > 0)
+                res[["Singleton"]]$coef <- matrix(0, nbeta, nbeta - 1)
+                for( l in 1 : (nbeta - 1) ){
+                    if(family == "binomial"){
+                        sing_fit <- glm.fit(cbind(1, x[ , l]), y, family = binomial())
+                    } else if(family == "poisson"){
+                        sing_fit <- glm.fit(cbind(1, x[ , l]), y, family = poisson())
+                    }
+                    res[["Singleton"]]$coef[c(1, l + 1), l] <- coef(sing_fit) ##  add +1 for the intercept.
+                }
+                if(singleton.intercept.only == TRUE){
+
+                    res[["Singleton"]]$coef <- cbind(res[["Singleton"]]$coef,
+                                                     matrix(0, nbeta, 1))
+                    if(family == "binomial"){
+                        res[["Singleton"]]$coef[1, nbeta] = qlogis(mean(y))
+                    } else if(family == "poisson"){
+                        res[["Singleton"]]$coef[1, nbeta] = log(mean(y))
+                    }
+
+                }
+
             }
 
         }
