@@ -244,6 +244,9 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                               penalty.factor = penalty.factor), TRUE)
         glmnet.eta <- cbind(cvglm$fit.preval, fuleta)
 
+        #### VZ: Adds cvglmnet object to output
+        res[["cvglmnet"]] <- cvglm
+
         #### SJ: In order to estimate the weights, we add 0 to the lambda sequence here.
         ####     Need to make sure that lambda remains a decreasing sequence!
         if("raw" %in% rule){
@@ -401,6 +404,8 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
                               grouped = grouped, keep = TRUE, lambda = lambda_long,
                               type.measure = type.measure,
                               penalty.factor = penalty.factor), TRUE)
+        #### VZ: Adds cvglmnet object to output
+        res[["cvglmnet"]] <- cvglm
 
         #### VZ: Finding unique model forms
         betas_lasso = as.matrix(coef(cvglm, s = lambda_raw))  # Coefficients for hybrid lambda
