@@ -455,7 +455,7 @@ fma.glmnet <-  function( x, y, focus, family, nlambda = 100, nfolds = NULL, grou
 
                 #### VZ: Singleton CV
                 if( "Singleton" %in% rule ){
-                    for( l in 1:(nbeta - 1) ){                              # Looping throug Singletons
+                    for( l in 1:(nbeta - 1) ){                              # Looping through Singletons
                         sing_fit <- glm.fit(cbind(1, x_i[ , l]), y_i,          # Fitting Singletons
                                             family = binomial())
                         b_sing <-  matrix(coef(sing_fit))                     # Extracting coefficients
