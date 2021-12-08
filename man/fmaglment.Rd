@@ -42,6 +42,7 @@ fma.glmnet( x, y, focus, family, nlambda = 100, nfolds = NULL, grouped,
 \value{
 It returns a list of the following objects
 \itemize{
+\item{cvglmnet:} object returned by cv.glmnet
 \item{fullcoef:} estimated beta from the full model.
 \item{raw:} if "raw" belongs to rule, then it contains a list of the following objects.
 \itemize{
