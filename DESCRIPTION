@@ -10,4 +10,4 @@ Description: More about what it does (maybe more than one line)
 License: GPL (>= 2)
 Encoding: UTF-8
 LazyData: true
-Depends: R (>= 3.5.0), Matrix, glmnet, Rsolnp
+Depends: R (>= 3.5.0), Matrix, glmnet, Rsolnp, kernlab
