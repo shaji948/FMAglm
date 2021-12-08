@@ -88,7 +88,7 @@ It returns a list of the following objects
 }
 
 \description{
-Too lazy to write anything.
+Cross-validation frequentist model averaging for generalized linear models. The candidate models are selected by adaptive LASSO.
 }
 
 \examples{
