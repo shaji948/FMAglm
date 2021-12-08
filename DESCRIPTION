@@ -1,4 +1,4 @@
-Package: GLMfma
+Package: FMAglm
 Type: Package
 Title: Frequentist model averaging for generalised linear model
 Version: 0.1.3
