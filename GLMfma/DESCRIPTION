@@ -1,0 +1,13 @@
+Package: GLMfma
+Type: Package
+Title: Frequentist model averaging for generalised linear model
+Version: 0.1.4
+Date: 2021-12-08
+Author: Who wrote it
+Maintainer: The package maintainer <yourself@somewhere.net>
+Description: More about what it does (maybe more than one line)
+    Use four spaces when indenting paragraphs within the Description.
+License: GPL (>= 2)
+Encoding: UTF-8
+LazyData: true
+Depends: R (>= 3.5.0), Matrix, glmnet, Rsolnp, kernlab, caret
